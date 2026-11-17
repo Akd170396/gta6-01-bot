@@ -3,17 +3,60 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solmara Nights — an open-world crime game</title>
 <link rel="icon" href="data:,">
-<title>Solmara Nights — Open-World Crime Game</title>
 <style>
-  html, body { margin: 0; padding: 0; background: #0d1526; height: 100%; overflow: hidden; }
-  #game { display: block; width: 100vw; height: 100vh; image-rendering: auto; }
-  #fallback { color: #f5d76e; font: 16px/1.5 system-ui, sans-serif; padding: 24px; display: none; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #10131a; height: 100%; overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; }
+  #wrap { position: relative; width: 1280px; height: 720px; margin: 0 auto; }
+  #game { display: block; width: 1280px; height: 720px; background: #8fae62; }
+  .hud { position: absolute; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.8); pointer-events: none; z-index: 5; }
+  #hud-top { top: 12px; right: 14px; text-align: right; font-size: 20px; font-weight: 700; }
+  #hud-money { color: #7dff8a; font-size: 26px; }
+  #hud-healthbar-wrap { width: 170px; height: 10px; background: rgba(0,0,0,.55); border: 1px solid #fff; margin-top: 4px; margin-left: auto; }
+  #hud-healthbar { height: 100%; width: 100%; background: #7dff8a; }
+  #hud-stars { font-size: 26px; letter-spacing: 3px; margin-top: 2px; }
+  #hud-mission { top: 12px; left: 14px; max-width: 560px; }
+  #hud-mission b { font-size: 22px; color: #ffd23f; display: block; }
+  #hud-objective { font-size: 16px; margin-top: 4px; line-height: 1.35; }
+  #hud-speed { bottom: 14px; left: 16px; font-size: 30px; font-weight: 800; display: none; }
+  #minimap { position: absolute; right: 14px; bottom: 14px; width: 180px; height: 180px; border: 2px solid rgba(255,255,255,.85); border-radius: 6px; background: #20242b; z-index: 5; }
+  #hud-message { top: 34%; left: 50%; transform: translateX(-50%); width: 760px; text-align: center; font-size: 22px; font-weight: 700; color: #ffd23f; display: none; }
+  #victory { top: 12px; left: 50%; transform: translateX(-50%); background: rgba(15,118,110,.92); padding: 8px 22px; border-radius: 8px; font-size: 20px; font-weight: 800; display: none; }
+  #overlay { position: absolute; inset: 0; z-index: 10; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(160deg, rgba(20,16,40,.88), rgba(120,50,20,.82)); color: #fff; text-align: center; padding: 40px; }
+  #overlay-title { font-size: 64px; font-weight: 900; letter-spacing: 4px; color: #ffd23f; text-shadow: 0 4px 0 #7a2d12, 0 8px 24px rgba(0,0,0,.6); }
+  #overlay-text { max-width: 720px; font-size: 17px; line-height: 1.55; margin: 18px 0 26px; }
+  #overlay-text p { margin-bottom: 10px; }
+  .btn { pointer-events: auto; cursor: pointer; border: none; border-radius: 8px; padding: 14px 34px; font-size: 20px; font-weight: 800; margin: 0 8px; background: #ffd23f; color: #231303; }
+  .btn:hover { background: #ffe27a; }
+  .btn.secondary { background: rgba(255,255,255,.18); color: #fff; border: 2px solid #fff; }
+  #btn-continue { display: none; }
 </style>
 </head>
 <body>
-<canvas id="game" width="1280" height="720"></canvas>
-<div id="fallback">Solmara Nights needs JavaScript and a canvas-capable browser.</div>
+<div id="wrap">
+  <canvas id="game" width="1280" height="720"></canvas>
+  <div class="hud" id="hud-top">
+    <div id="hud-money">$200</div>
+    <div>HEALTH <span id="hud-health">100</span></div>
+    <div id="hud-healthbar-wrap"><div id="hud-healthbar"></div></div>
+    <div id="hud-stars">☆☆☆☆☆</div>
+  </div>
+  <div class="hud" id="hud-mission"><b id="hud-mission-title">1 · Hotwire</b><div id="hud-objective">Steal a car — walk up to one and press E.</div></div>
+  <div class="hud" id="hud-speed">0 km/h</div>
+  <canvas id="minimap" width="180" height="180"></canvas>
+  <div class="hud" id="hud-message"></div>
+  <div class="hud" id="victory">★ SOLMARA IS YOURS ★</div>
+  <div id="overlay">
+    <div id="overlay-title">SOLMARA NIGHTS</div>
+    <div id="overlay-text"></div>
+    <div>
+      <button class="btn" id="btn-start">Start game</button>
+      <button class="btn secondary" id="btn-continue">Continue</button>
+      <button class="btn secondary" id="btn-new">New game</button>
+    </div>
+  </div>
+</div>
 <script type="module" src="src/main.js"></script>
 </body>
 </html>

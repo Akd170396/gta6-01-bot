@@ -1,55 +1,51 @@
-// LocalStorage save / load for Solmara Nights. The save holds the player's
-// money, health, mission progress, position and story state — never any key.
+// Save and continue: the player's progress lives in localStorage.
+export const SAVE_KEY = 'solmara-nights-save-v1';
 
-import { SAVE_KEY } from './state.js';
-
-// saveGame writes the current progress to localStorage.
 export function saveGame(state) {
   try {
     const data = {
-      version: 1,
-      money: Math.round(state.money),
-      health: Math.round(state.health),
-      missionsDone: state.missionsDone,
-      missionIndex: state.missions ? state.missions.index : 0,
-      x: state.player ? Math.round(state.player.x) : 500,
-      y: state.player ? Math.round(state.player.y) : 500,
-      storyComplete: state.storyComplete,
-      score: Math.round(state.score),
+      money: state.money,
+      health: state.health,
+      missionIndex: state.mission.index,
+      x: state.player.x,
+      y: state.player.y,
       savedAt: Date.now(),
     };
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    state.saveSlot = data;
     return true;
   } catch (e) {
     return false;
   }
 }
 
-// loadGame reads a save back, or returns null when there is none.
-export function loadGame() {
+export function loadSave() {
   try {
-    const raw = window.localStorage.getItem(SAVE_KEY);
+    const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const data = JSON.parse(raw);
-    if (!data || data.version !== 1) return null;
+    if (typeof data.money !== 'number' || typeof data.missionIndex !== 'number') return null;
     return data;
   } catch (e) {
     return null;
   }
 }
 
-// hasSave reports whether a save exists (for the start screen).
-export function hasSave() {
-  try {
-    return window.localStorage.getItem(SAVE_KEY) !== null;
-  } catch (e) {
-    return false;
-  }
+export function clearSave() {
+  try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* storage unavailable */ }
 }
 
-// clearSave removes the save (used from the pause menu's New Game).
-export function clearSave() {
-  try {
-    window.localStorage.removeItem(SAVE_KEY);
-  } catch (e) { /* storage is best-effort */ }
+// True when a continue slot exists, without parsing it.
+export function hasSave() {
+  try { return localStorage.getItem(SAVE_KEY) !== null; } catch (e) { return false; }
+}
+
+export function applySave(state, data) {
+  state.money = data.money;
+  state.health = data.health || 100;
+  state.player.x = data.x || 900;
+  state.player.y = data.y || 900;
+  state.camera.x = state.player.x;
+  state.camera.y = state.player.y;
+  return data.missionIndex;
 }

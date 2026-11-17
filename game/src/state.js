@@ -1,62 +1,83 @@
-// Shared constants and the single game-state factory for Solmara Nights.
-// Every other module receives the state object and reads or mutates it;
-// nothing here touches the DOM, the canvas or the network.
+// The whole game state in one place, so every system reads the same truth.
+import { makeRng } from './rng.js';
+import { buildWorld } from './world.js';
 
-// Fictional sun-soaked coastal city. All names, people and places are invented.
-export const CITY_NAME = 'Solmara';
-export const GAME_TITLE = 'Solmara Nights';
-export const WORLD_W = 2600;
-export const WORLD_H = 1900;
-export const ROAD_W = 72;
-export const SAVE_KEY = 'solmara-nights-save-v1';
 export const WORLD_SEED = 1337;
 
-export const COLORS = {
-  grass: '#7fae5a',
-  parkGrass: '#69a24e',
-  sand: '#e8d29a',
-  water: '#2f7fb8',
-  waterDeep: '#256b9e',
-  road: '#3a3f4a',
-  roadLine: '#e8e3c8',
-  sidewalk: '#b8b2a4',
-  buildingRoof: ['#c96f4a', '#d9a441', '#7d9bb5', '#b5533c', '#8a7ba8', '#5d8a6a'],
-  buildingWall: '#e8ddc8',
-  tree: '#3f7d3a',
-  palm: '#4c8a3f',
+export const MISSION_TARGETS = {
+  delivery: { x: 2700, y: 900 },
+  getaway: { x: 450, y: 2700 },
+  hideout: { x: 2700, y: 2700 },
 };
 
 export function createState() {
+  const world = buildWorld(WORLD_SEED);
   return {
-    mode: 'menu', // menu | playing | paused | busted | wasted | complete
+    world,
+    rng: makeRng(WORLD_SEED + 7),
     time: 0,
-    money: 250,
+    running: false,
+    over: false,
+    victory: false,
+    paused: false,
+    money: 200,
     health: 100,
-    maxHealth: 100,
     wanted: 0,
     wantedTimer: 0,
-    lastCrimeAt: -999,
-    score: 0,
-    kills: 0,
-    carsStolen: 0,
-    missionsDone: 0,
-    message: '',
-    messageUntil: 0,
-    objective: '',
-    player: null,
-    car: null, // the car the player currently drives (or null on foot)
-    cars: [], // all cars in the world (traffic + parked + police)
+    quietTimer: 0,
+    shotsSinceStar: 0,
+    player: {
+      x: 900, y: 900, angle: -Math.PI / 2, speed: 0,
+      onFoot: true, car: null, ammo: 24,
+      punchCd: 0, shootCd: 0, bustMeter: 0, hurtFlash: 0,
+    },
+    cars: [],
     peds: [],
     cops: [],
-    thugs: [],
-    pickups: [],
-    packages: [],
-    markers: [],
-    city: null,
-    camera: { x: 0, y: 0 },
-    muted: false,
-    saveExists: false,
-    storyComplete: false,
-    stats: { distanceDriven: 0, timePlayed: 0 },
+    vipers: [],
+    effects: [],
+    mission: {
+      index: 0, stage: 'intro', target: null, timer: 0,
+      text: 'Steal a car — walk up to one and press E.',
+      title: '1 · Hotwire',
+    },
+    message: '',
+    messageTimer: 0,
+    camera: { x: 900, y: 900, zoom: 1 },
+    stats: { carsStolen: 0, missionsDone: 0, shots: 0, busts: 0 },
+    saveSlot: null,
   };
+}
+
+// A floating text/particle burst the renderer draws.
+export function spawnEffect(state, x, y, kind) {
+  const colors = { shot: '#ffd23f', hit: '#ff5a3c', pickup: '#7dff8a', bust: '#3c8cff' };
+  for (let i = 0; i < 10; i++) {
+    const a = state.rng() * Math.PI * 2;
+    const sp = 40 + state.rng() * 120;
+    state.effects.push({
+      x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      life: 0.5 + state.rng() * 0.3, max: 0.8,
+      color: colors[kind] || '#ffffff', size: 2 + state.rng() * 3,
+    });
+  }
+  if (state.effects.length > 220) state.effects.splice(0, state.effects.length - 220);
+}
+
+export function addMessage(state, text, seconds) {
+  state.message = text;
+  state.messageTimer = seconds || 4;
+}
+
+// Raising the heat: stealing, hitting people, shooting, ramming police.
+export function addCrime(state, stars) {
+  if (state.wanted >= 5) return;
+  state.wanted = Math.min(5, state.wanted + stars);
+  state.wantedTimer = 0;
+  state.quietTimer = 0;
+}
+
+// True while any patrol is after the player.
+export function isWanted(state) {
+  return state.wanted > 0;
 }

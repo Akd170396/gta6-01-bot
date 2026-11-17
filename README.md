@@ -4,30 +4,15 @@
 [![rank](https://make.fun/badge/gta6-01/Akd170396/gta6-01-bot/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/Akd170396/gta6-01-bot/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-Solmara Nights — an open-world crime game in the fictional sun-soaked coastal city of Solmara. Explore the city on foot and by car, steal cars, outrun the police through a 5-star wanted system, run six story missions for Mara Solis, fight rival gangs, and collect cash stashes — with a HUD, minimap, start screen and saves. Built from scratch in vanilla JavaScript and canvas, no libraries, no network.
+Solmara Nights — a complete open-world crime game in the fictional sun-soaked port city of Solmara. Play as Mara Solis: explore the city on foot and by car, steal cars, outrun the Solmara PD through a five-star wanted system, and run six story missions from a hotwired sedan to a yacht at the marina. Traffic, pedestrians, combat, a HUD with a minimap, a start screen and autosave — all in plain static files, no network, no build step.
 
 ## Run it
 
 ```sh
 cd game && python3 -m http.server 8080
-# open http://localhost:8080 in desktop Chrome
 ```
 
-## Play
-
-- **WASD / Arrows** — walk & drive · **Shift** — run
-- **E** — enter / exit car (stealing a parked car draws the heat)
-- **Mouse** — aim · **Click / Space** — punch · **2 + Click** — fire the pistol
-- **M** — mute · **P / Esc** — pause · progress saves automatically
-
-## The game
-
-- **Open world**: a road-grid city with a central park, a beach and marina, traffic cars and pedestrians, all generated from a fixed seed.
-- **Wanted system**: crimes raise 0–5 stars; police cars and foot cops chase, ram and bust you. Lay low and the heat cools off.
-- **Missions & story**: six jobs for Mara — steal a car, run a package, a timed getaway, shaking the heat, a gang fight at the plaza, and a final yacht escape.
-- **Combat**: fists and a pistol, rival Vipers with health bars, damage and knockback.
-- **HUD & minimap**: cash, health, wanted stars, objective, speed, and a live minimap with the mission marker and police dots.
-- **Save**: progress (cash, missions, position) saves to localStorage; continue from the start screen.
+Then open http://localhost:8080 in desktop Chrome. WASD/arrows move and drive, E steals or exits a car, F punches, click or Space shoots, Space is the handbrake in a car, H honks, M mutes, P pauses.
 
 ---
 

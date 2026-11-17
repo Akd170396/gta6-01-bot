@@ -1,176 +1,179 @@
-// The wanted system and the police. Crimes raise the wanted level, police
-// cars and foot cops spawn and chase, and getting caught means BUSTED while
-// losing all health means WASTED. Laying low lets the heat cool off.
+// The Solmara police: patrol cars and foot officers who answer the wanted level.
+// A ram has a 1.5 s cooldown per car, so the player is never pinned to 0 km/h.
+import { makeCar, CAR_KINDS } from './vehicles.js';
+import { snapToRoad, STEP } from './world.js';
+import { addMessage, spawnEffect } from './state.js';
 
-import { createCar, drawCar } from './vehicles.js';
-import { nearestRoadPoint } from './world.js';
-import { mulberry32, range } from './rng.js';
+const RAM_COOLDOWN = 1.5;
+const BUST_TIME = 1.2;
 
-// addWanted raises the wanted level (0-5) and stamps the last crime time.
-export function addWanted(state, stars) {
-  if (state.mode !== 'playing') return;
-  state.wanted = Math.min(5, state.wanted + stars);
-  state.lastCrimeAt = state.time;
-  state.wantedTimer = 0;
-  if (state.wanted > 0 && state.fx) state.fx.startSiren();
+function wantedCarCount(wanted) {
+  return Math.min(4, wanted);
 }
 
-// updatePolice spawns and steers police, decays the wanted level when the
-// player lays low, and resolves busts.
-export function updatePolice(state, dt) {
-  const fx = state.fx;
-  // Spawn police cars to match the wanted level (one per star, max 4 cars).
-  const wantCars = state.wanted === 0 ? 0 : Math.min(4, state.wanted);
-  const policeCars = state.cars.filter((c) => c.kind === 'police');
-  if (policeCars.length < wantCars) {
-    const rng = mulberry32(Math.floor(state.time * 1000) + 55);
-    const p = state.player;
-    const edge = [
-      { x: 200, y: 200 }, { x: 2300, y: 200 }, { x: 200, y: 1700 }, { x: 2300, y: 1700 },
-    ][policeCars.length % 4];
-    const car = createCar(edge.x, edge.y, Math.atan2(p.y - edge.y, p.x - edge.x), {
-      kind: 'police', maxSpeed: 430 + state.wanted * 18, color: '#20242e',
-    });
-    car.driver = 'police';
-    state.cars.push(car);
-    if (fx) fx.sirenBlip();
-  }
-  // Remove police cars once the heat is gone.
-  if (state.wanted === 0) {
-    state.cars = state.cars.filter((c) => c.kind !== 'police');
-    state.cops = [];
-    if (fx) fx.stopSiren();
-  }
+function wantedFootCount(wanted) {
+  return wanted >= 2 ? Math.min(3, wanted - 1) : 0;
+}
 
-  // Wanted decay: 14 seconds without a crime and no cop close by.
-  if (state.wanted > 0 && state.time - state.lastCrimeAt > 14) {
-    let nearest = Infinity;
-    for (const car of policeCars) {
-      nearest = Math.min(nearest, Math.hypot(car.x - state.player.x, car.y - state.player.y));
-    }
-    for (const cop of state.cops) {
-      nearest = Math.min(nearest, Math.hypot(cop.x - state.player.x, cop.y - state.player.y));
-    }
-    if (nearest > 420) {
-      state.wantedTimer += dt;
-      if (state.wantedTimer > 8) {
-        state.wanted -= 1;
-        state.wantedTimer = 0;
-        state.message = state.wanted === 0 ? 'Heat is off. You are clean.' : 'Wanted level dropped.';
-        state.messageUntil = state.time + 3;
-        if (state.wanted === 0 && fx) fx.stopSiren();
-      }
-    } else {
+export function updatePolice(dt, state, audio) {
+  const p = state.player;
+  // The heat fades when the player stays quiet and out of sight.
+  if (state.wanted > 0) {
+    state.wantedTimer += dt;
+    const nearestCop = nearestCopDist(state);
+    if (nearestCop > 500) state.quietTimer += dt; else state.quietTimer = 0;
+    if (state.quietTimer > 12) {
+      state.wanted -= 1;
+      state.quietTimer = 0;
       state.wantedTimer = 0;
+      addMessage(state, state.wanted > 0 ? 'The heat is cooling off…' : 'You lost them. Clean — for now.');
     }
   }
 
-  // Foot cops appear when the player is on foot and wanted.
-  if (state.wanted > 0 && !state.car && state.cops.length < Math.min(3, state.wanted)) {
-    const rng = mulberry32(Math.floor(state.time * 1000) + 7);
-    const p = state.player;
-    const a = range(rng, 0, Math.PI * 2);
-    state.cops.push({
-      x: p.x + Math.cos(a) * 320,
-      y: p.y + Math.sin(a) * 320,
-      angle: 0, speed: 150 + state.wanted * 12, radius: 12,
-      bustTimer: 0, walkPhase: 0,
-    });
-  }
+  // Spawn patrol cars up to the wanted level.
+  const carsWanted = wantedCarCount(state.wanted);
+  const policeCars = state.cars.filter((c) => c.driver === 'police');
+  if (policeCars.length < carsWanted) spawnPoliceCar(state);
+  // Foot officers only chase a player on foot.
+  const feetWanted = p.onFoot ? wantedFootCount(state.wanted) : 0;
+  const liveCops = state.cops.filter((c) => !c.down);
+  if (liveCops.length < feetWanted) spawnFootCop(state);
 
-  // Chase: police cars pursue the player; foot cops run them down.
-  const target = state.car || state.player;
-  for (const car of state.cars) {
-    if (car.kind !== 'police') continue;
-    updatePoliceCar(state, car, target, dt);
-  }
-  for (const cop of state.cops) {
-    const dx = state.player.x - cop.x;
-    const dy = state.player.y - cop.y;
-    const d = Math.hypot(dx, dy) || 1;
-    cop.angle = Math.atan2(dy, dx);
-    const speed = state.car ? cop.speed * 0.4 : cop.speed;
-    cop.x += (dx / d) * speed * dt;
-    cop.y += (dy / d) * speed * dt;
-    cop.walkPhase += dt * 10;
-    // Busted when a cop stays on the player on foot.
-    if (!state.car && d < 30) {
-      cop.bustTimer += dt;
-      if (cop.bustTimer > 1.2) {
-        state.mode = 'busted';
-        if (fx) fx.fail();
-      }
-    } else {
-      cop.bustTimer = 0;
-    }
-  }
-
-  // Busted in a car: stopped with a police car right beside it.
-  if (state.car && Math.abs(state.car.speed) < 25) {
-    for (const car of state.cars) {
-      if (car.kind !== 'police') continue;
-      if (Math.hypot(car.x - state.car.x, car.y - state.car.y) < 55) {
-        state.bustTimer = (state.bustTimer || 0) + dt;
-        if (state.bustTimer > 2.5) {
-          state.mode = 'busted';
-          if (fx) fx.fail();
-        }
-        break;
+  // Patrol cars chase and ram; a ram cannot repeat for 1.5 s.
+  for (const car of policeCars) {
+    car.ramCd = Math.max(0, car.ramCd - dt);
+    const tx = p.x, ty = p.y;
+    const dx = tx - car.x, dy = ty - car.y;
+    const dist = Math.hypot(dx, dy);
+    const wantAngle = Math.atan2(dy, dx);
+    let diff = wantAngle - car.angle;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    car.angle += Math.max(-2.6 * dt, Math.min(2.6 * dt, diff));
+    const targetSpeed = dist > 320 ? car.max : car.max * 0.85;
+    car.speed += (targetSpeed - car.speed) * Math.min(1, dt * 1.2);
+    car.x += Math.cos(car.angle) * car.speed * dt;
+    car.y += Math.sin(car.angle) * car.speed * dt;
+    // Ram: shove the player's car and dent it, then back off on cooldown.
+    // The ram never pins the player to a standstill: a minimum roll speed
+    // of 80 keeps the chase a chase instead of a parking lot.
+    if (!p.onFoot && p.car && dist < 58 && car.ramCd <= 0) {
+      car.ramCd = RAM_COOLDOWN;
+      car.speed *= 0.4;
+      p.car.speed = Math.sign(p.car.speed || 1) * Math.max(Math.abs(p.car.speed) * 0.7, 80);
+      p.car.hp -= 12;
+      p.car.x += Math.cos(car.angle) * 40;
+      p.car.y += Math.sin(car.angle) * 40;
+      spawnEffect(state, p.car.x, p.car.y, 'hit');
+      audio.punch();
+      if (p.car.hp <= 0) {
+        addMessage(state, 'Your car is wrecked! Bail out!');
+        p.car.hp = 100;
+        p.car.speed = 0;
       }
     }
-  } else {
-    state.bustTimer = 0;
-  }
-}
-
-function updatePoliceCar(state, car, target, dt) {
-  const dx = target.x - car.x;
-  const dy = target.y - car.y;
-  const dist = Math.hypot(dx, dy) || 1;
-  const wantAngle = Math.atan2(dy, dx);
-  let diff = wantAngle - car.angle;
-  while (diff > Math.PI) diff -= Math.PI * 2;
-  while (diff < -Math.PI) diff += Math.PI * 2;
-  car.angle += Math.max(-2.6 * dt, Math.min(2.6 * dt, diff));
-  const speedTarget = dist > 120 ? car.maxSpeed : car.maxSpeed * 0.55;
-  car.speed += (speedTarget - car.speed) * Math.min(1, dt * 1.2);
-  car.x += Math.cos(car.angle) * car.speed * dt;
-  car.y += Math.sin(car.angle) * car.speed * dt;
-  car.sirenPhase += dt;
-  car.ramCooldown = Math.max(0, (car.ramCooldown || 0) - dt);
-  // Ram (PIT-style) the player's car on contact, but only once per cooldown:
-  // without the cooldown three police cars pin the player at zero speed.
-  if (state.car && car.ramCooldown <= 0 && Math.hypot(car.x - state.car.x, car.y - state.car.y) < 40) {
-    car.ramCooldown = 1.5;
-    state.car.speed *= 0.9;
-    car.speed *= 0.9;
-    if (Math.abs(state.car.speed) > 200) {
-      state.car.health -= 6;
+    // A patrol car that lost the player fades back to the precinct.
+    if (dist > 1600) {
+      car.driver = null;
+      state.cars = state.cars.filter((c) => c !== car);
     }
   }
+
+  // Foot officers run the player down and try to hold them.
+  for (const cop of state.cops) {
+    if (cop.down) {
+      cop.downTimer -= dt;
+      if (cop.downTimer <= 0) state.cops = state.cops.filter((c) => c !== cop);
+      continue;
+    }
+    const dx = p.x - cop.x, dy = p.y - cop.y;
+    const dist = Math.hypot(dx, dy);
+    if (p.onFoot && dist < 700) {
+      cop.angle = Math.atan2(dy, dx);
+      cop.x += Math.cos(cop.angle) * 165 * dt;
+      cop.y += Math.sin(cop.angle) * 165 * dt;
+      if (dist < 30) {
+        p.bustMeter += dt;
+        if (p.bustMeter >= BUST_TIME) bustPlayer(state, audio);
+      }
+    } else if (!p.onFoot) {
+      // The player is driving: the officer jogs to the nearest road.
+      const snap = snapToRoad(cop.x, cop.y);
+      cop.x += (snap.x - cop.x) * dt * 0.5;
+      cop.y += (snap.y - cop.y) * dt * 0.5;
+      if (dist > 900) state.cops = state.cops.filter((c) => c !== cop);
+    } else if (dist > 900) {
+      state.cops = state.cops.filter((c) => c !== cop);
+    }
+  }
+
+  // Siren wails while any patrol car is near.
+  const sirenNear = policeCars.some((c) => Math.hypot(c.x - p.x, c.y - p.y) < 600);
+  audio.setSiren(sirenNear && state.wanted > 0);
+  audio.tickSiren(dt);
 }
 
-// drawPolice paints police cars (via vehicles) and foot cops.
-export function drawPolice(ctx, state) {
-  for (const car of state.cars) {
-    if (car.kind === 'police') drawCar(ctx, car, state.time);
+function nearestCopDist(state) {
+  const p = state.player;
+  let best = Infinity;
+  for (const c of state.cars) {
+    if (c.driver === 'police') best = Math.min(best, Math.hypot(c.x - p.x, c.y - p.y));
   }
-  for (const cop of state.cops) {
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    ctx.beginPath();
-    ctx.ellipse(cop.x, cop.y + 10, 10, 4, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.save();
-    ctx.translate(cop.x, cop.y);
-    ctx.rotate(cop.angle);
-    ctx.fillStyle = '#1c4f9e';
-    ctx.fillRect(-9, -7, 18, 14);
-    ctx.fillStyle = '#e8b98a';
-    ctx.beginPath();
-    ctx.arc(2, 0, 6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#1c4f9e';
-    ctx.fillRect(-4, -8, 8, 4);
-    ctx.restore();
+  for (const c of state.cops) {
+    if (!c.down) best = Math.min(best, Math.hypot(c.x - p.x, c.y - p.y));
   }
+  return best;
+}
+
+function spawnPoliceCar(state) {
+  const p = state.player;
+  const rng = state.rng;
+  // Spawn on a road 550–750 units away, roughly ahead of the player.
+  const angle = rng() * Math.PI * 2;
+  let x = p.x + Math.cos(angle) * (550 + rng() * 200);
+  let y = p.y + Math.sin(angle) * (550 + rng() * 200);
+  x = Math.max(90, Math.min(3510, x));
+  y = Math.max(90, Math.min(3510, y));
+  const snap = snapToRoad(x, y);
+  const car = makeCar(snap.x, snap.y, Math.atan2(p.y - snap.y, p.x - snap.x), 'police', '#1c2733');
+  car.driver = 'police';
+  car.hp = 100;
+  state.cars.push(car);
+}
+
+function spawnFootCop(state) {
+  const p = state.player;
+  const rng = state.rng;
+  const angle = rng() * Math.PI * 2;
+  const x = p.x + Math.cos(angle) * 320;
+  const y = p.y + Math.sin(angle) * 320;
+  state.cops.push({
+    x: Math.max(40, Math.min(3560, x)),
+    y: Math.max(40, Math.min(3560, y)),
+    angle: 0, hp: 100, down: false, downTimer: 0,
+  });
+}
+
+function bustPlayer(state, audio) {
+  const p = state.player;
+  state.stats.busts += 1;
+  const fine = Math.min(state.money, 100);
+  state.money -= fine;
+  state.wanted = 0;
+  state.quietTimer = 0;
+  p.bustMeter = 0;
+  p.health = 100;
+  audio.busted();
+  spawnEffect(state, p.x, p.y, 'bust');
+  if (!p.onFoot && p.car) {
+    p.car.driver = null;
+    p.car.parked = true;
+    p.car = null;
+    p.onFoot = true;
+  }
+  // Hauled to the precinct steps, then released at the start corner.
+  p.x = 900; p.y = 900;
+  state.camera.x = p.x; state.camera.y = p.y;
+  addMessage(state, `BUSTED! The Solmara PD took $${fine} and dropped you at the precinct.`, 5);
+  void STEP; void CAR_KINDS;
 }
